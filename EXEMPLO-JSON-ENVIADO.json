@@ -1,0 +1,73 @@
+{
+  "description": "Este é o JSON que será enviado para a API quando você processar a planilha",
+  "endpoint": "POST https://v2-kwwmyyzjzq-uc.a.run.app/projects/create-many",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer SEU-TOKEN-JWT-AQUI"
+  },
+  "body": {
+    "projects": [
+      {
+        "name": "Residencial Ipê Amarelo",
+        "location": "Avenida Central, 1200 - Campinas/SP",
+        "startDate": "2025-01-15",
+        "forecastCompletionDate": "2026-08-30",
+        "constructionCompanyId": "64f1a2b3c4d5e6f7890abc12",
+        "photoUrl": "https://example.com/fotos/ipe-amarelo.jpg"
+      },
+      {
+        "name": "Residencial Jardim das Flores",
+        "location": "São Paulo - SP",
+        "startDate": "2024-03-01",
+        "forecastCompletionDate": "2025-06-30",
+        "constructionCompanyId": "64f1a2b3c4d5e6f7890abc13",
+        "photoUrl": "https://example.com/jardim-flores.jpg"
+      },
+      {
+        "name": "Comercial Centro Empresarial",
+        "location": "Rio de Janeiro - RJ",
+        "startDate": "2024-04-15",
+        "forecastCompletionDate": "2025-12-31",
+        "constructionCompanyId": "64f1a2b3c4d5e6f7890abc14",
+        "photoUrl": "https://example.com/centro-empresarial.jpg"
+      }
+    ]
+  },
+  "expectedResponse": {
+    "created": 3,
+    "failed": 0,
+    "projects": [
+      {
+        "_id": "gerado-pela-api",
+        "name": "Residencial Ipê Amarelo",
+        "location": "Avenida Central, 1200 - Campinas/SP",
+        "startDate": "2025-01-15T00:00:00.000Z",
+        "forecastCompletionDate": "2026-08-30T00:00:00.000Z",
+        "constructionCompanyId": "64f1a2b3c4d5e6f7890abc12",
+        "photoUrl": "https://example.com/fotos/ipe-amarelo.jpg",
+        "createdAt": "2025-10-16T13:50:49.656Z",
+        "updatedAt": "2025-10-16T13:50:49.656Z"
+      }
+    ],
+    "errors": []
+  },
+  "notes": {
+    "1": "O campo 'name' vem da coluna 'Nome do Projeto' da planilha Excel",
+    "2": "O campo 'location' vem da coluna 'Localização'",
+    "3": "O campo 'startDate' vem da coluna 'Data de Início' (formato YYYY-MM-DD)",
+    "4": "O campo 'forecastCompletionDate' vem da coluna 'Data de Conclusão Prevista'",
+    "5": "O campo 'constructionCompanyId' deve ser um ObjectId válido de uma construtora existente",
+    "6": "O campo 'photoUrl' é opcional e vem da coluna 'URL da Foto'",
+    "7": "A API retorna os projetos criados com _id, createdAt e updatedAt gerados automaticamente"
+  },
+  "validation_rules": {
+    "name": "Obrigatório, string não vazia",
+    "location": "Obrigatório, string não vazia",
+    "startDate": "Obrigatório, formato YYYY-MM-DD, deve ser anterior à forecastCompletionDate",
+    "forecastCompletionDate": "Obrigatório, formato YYYY-MM-DD, deve ser posterior à startDate",
+    "constructionCompanyId": "Obrigatório, ObjectId válido (24 caracteres hexadecimais)",
+    "photoUrl": "Opcional, deve ser uma URL válida se fornecida"
+  }
+}
+
+
