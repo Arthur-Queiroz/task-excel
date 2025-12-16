@@ -79,7 +79,7 @@ function App() {
   const apiConfig: ApiConfig = {
     baseUrl: 'https://v2-kwwmyyzjzq-uc.a.run.app',
     endpoint: '/tasks/create-many',
-    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NTgwNjA0OCwiZXhwIjoxNzY1ODA5NjQ4fQ.lGUYlOKydNE5_bcDX5yDaya6VgY82HrO4KdhGQQGE4c'
+    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NTg4NDg4NSwiZXhwIjoxNzY1ODg4NDg1fQ.QDkfto-YsyzGM2jyxeks81_DNd2f36FbTFYT-Y7VIjw'
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,6 +135,47 @@ function App() {
     }
   }
 
+  // ← ADICIONADO: Mapear nossa Task para o formato da API externa
+  const mapTaskToApiFormat = (task: Task) => {
+    // Garantir que sector nunca seja vazio
+    const sector = task.sector && task.sector.trim() !== '' && task.sector !== 'NaN' 
+      ? task.sector 
+      : 'Não especificado';
+
+    // Garantir que floorNumber seja >= 0
+    const floorNumber = task.floorNumber >= 0 ? task.floorNumber : 0;
+
+    return {
+      towerId: task.towerId,
+      sector: sector,
+      title: task.title,
+      scheduleDate: task.scheduleDate,
+      completionDate: null,
+      statusDate: task.statusDate,
+      weightOnProject: task.taskWeightInProject,  // decimal (0-1)
+      completionPercentage: task.completionPercentage,
+      observation: task.observation || '',
+      done: task.done,
+      floorNumber: floorNumber,
+      stages: task.stages.map(stage => {
+        // Garantir que environment nunca seja vazio
+        const environment = stage.environment && stage.environment.trim() !== '' && stage.environment !== 'NaN'
+          ? stage.environment
+          : 'Não especificado';
+
+        return {
+          name: stage.name,
+          weight: stage.weightInTask * 100,  // Converter decimal para percentual (0-100)
+          weightOnProject: stage.weightInProject,  // decimal (0-1)
+          completionPercentage: stage.completionPercentage,
+          scheduleDate: stage.scheduleDate,
+          environment: environment,
+          measurementDates: stage.measurementDates || []
+        };
+      })
+    }
+  }
+
   const sendToApi = async () => {
     if (!processResult || !processResult.tasks || processResult.tasks.length === 0) {
       setError('❌ Nenhuma tarefa válida para enviar')
@@ -156,7 +197,7 @@ function App() {
       let successCount = 0
       let errorCount = 0
       const errors: any[] = []
-      const allResponses: any[] = [] // ← ADICIONADO: Armazenar todas as respostas
+      const allResponses: any[] = []
 
       // Enviar em lotes
       for (let i = 0; i < totalBatches; i++) {
@@ -164,42 +205,41 @@ function App() {
         const end = Math.min(start + BATCH_SIZE, totalTasks)
         const batch = processResult.tasks.slice(start, end)
 
+        // Mapear tasks para o formato da API externa
+        const mappedBatch = batch.map(mapTaskToApiFormat)
+
         setSendProgress(`Enviando lote ${i + 1}/${totalBatches}...`)
         console.log(`📤 Enviando lote ${i + 1}/${totalBatches} (${batch.length} tarefas)...`)
 
         try {
-          const response = await axios.post<ApiSendResult>(
-            'http://localhost:3000/tasks-upload/send-to-api',
-            {
-              baseUrl: apiConfig.baseUrl,
-              endpoint: apiConfig.endpoint,
-              token: apiConfig.token,
-              tasks: batch
-            },
+          const response = await axios.post(
+            'https://v2-kwwmyyzjzq-uc.a.run.app/tasks/create-many',
+            mappedBatch,  // Enviar array direto de tarefas
             {
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiConfig.token}`
               },
             }
           )
 
-          // ← ADICIONADO: Armazenar resposta
+          // Armazenar resposta
           allResponses.push({
             batchNumber: i + 1,
             tasksCount: batch.length,
             response: response.data
           })
 
-          if (response.data.success) {
+          if (response.status === 200 || response.status === 201) {
             successCount += batch.length
             console.log(`✅ Lote ${i + 1} enviado com sucesso`)
           } else {
             errorCount += batch.length
             errors.push({
               batch: i + 1,
-              error: response.data.message
+              error: `Status ${response.status}: ${response.statusText}`
             })
-            console.error(`❌ Erro no lote ${i + 1}:`, response.data.message)
+            console.error(`❌ Erro no lote ${i + 1}:`, response.statusText)
           }
         } catch (err) {
           errorCount += batch.length
@@ -208,14 +248,16 @@ function App() {
             : 'Erro desconhecido'
           errors.push({
             batch: i + 1,
-            error: errorMsg
+            error: errorMsg,
+            details: axios.isAxiosError(err) ? err.response?.data : null
           })
           
-          // ← ADICIONADO: Armazenar erro
+          // Armazenar erro
           allResponses.push({
             batchNumber: i + 1,
             tasksCount: batch.length,
-            error: errorMsg
+            error: errorMsg,
+            details: axios.isAxiosError(err) ? err.response?.data : null
           })
           
           console.error(`❌ Erro ao enviar lote ${i + 1}:`, errorMsg)
@@ -229,7 +271,7 @@ function App() {
 
       setSendProgress('')
 
-      // ← ADICIONADO: Salvar JSON de debug
+      // Salvar JSON de debug
       const debugData = {
         timestamp: new Date().toISOString(),
         totalTasks,
@@ -372,6 +414,18 @@ function App() {
                     </span>
                   </div>
                 )}
+              </div>
+
+              {/* Mensagem sobre validação */}
+              <div className="validation-info">
+                <h4>ℹ️ Nova Regra de Validação</h4>
+                <p>
+                  ✅ <strong>Validação no projeto:</strong> A soma de TODOS os pesos deve ser 100%
+                  <br />
+                  ✅ <strong>Tarefas individuais:</strong> NÃO precisam somar 100%
+                  <br />
+                  ✅ <strong>Diferenciação:</strong> Torre → Pavimento → Setor
+                </p>
               </div>
 
               {/* Exibir tarefas válidas */}
