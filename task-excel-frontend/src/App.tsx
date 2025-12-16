@@ -10,7 +10,8 @@ interface ApiConfig {
 
 interface Stage {
   name: string
-  weight: number
+  weightInTask: number        // Peso da etapa na tarefa
+  weightInProject: number     // Peso da etapa no projeto
   completionPercentage: number
   scheduleDate: string
   environment: string
@@ -27,21 +28,24 @@ interface Task {
   observation?: string
   done: boolean
   completionPercentage: number
+  taskWeightInProject: number  // Peso da tarefa no projeto (soma das etapas)
   stages: Stage[]
 }
 
 interface ValidationError {
-  taskName: string
-  floorNumber: number
+  type?: string
+  taskName?: string
+  floorNumber?: number
+  towerId?: string
   totalWeight: number
-  expectedWeight: number
+  expectedWeight?: number
   difference: number
   message: string
 }
 
 interface ProcessResult {
   success: boolean
-  message: string
+  message?: string
   tasks: Task[]
   errors: {
     timestamp: string
@@ -52,6 +56,7 @@ interface ProcessResult {
     totalRows: number
     validTasks: number
     invalidTasks: number
+    projectWeightTotal?: number
   }
 }
 
@@ -68,12 +73,13 @@ function App() {
   const [processResult, setProcessResult] = useState<ProcessResult | null>(null)
   const [isSendingToApi, setIsSendingToApi] = useState(false)
   const [apiSendResult, setApiSendResult] = useState<ApiSendResult | null>(null)
+  const [sendProgress, setSendProgress] = useState<string>('')
 
   // Configuração fixa da API externa
   const apiConfig: ApiConfig = {
     baseUrl: 'https://v2-kwwmyyzjzq-uc.a.run.app',
     endpoint: '/tasks/create-many',
-    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2MjE3NjA3NiwiZXhwIjoxNzYyMTc5Njc2fQ.cS7BJ2UYYlp00kvr5pbqHumq4Y_wIQ8IHMp4mFDlhMM'
+    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NTgwNjA0OCwiZXhwIjoxNzY1ODA5NjQ4fQ.lGUYlOKydNE5_bcDX5yDaya6VgY82HrO4KdhGQQGE4c'
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,27 +144,139 @@ function App() {
     setIsSendingToApi(true)
     setError(null)
     setApiSendResult(null)
+    setSendProgress('')
 
     try {
-      const response = await axios.post<ApiSendResult>(
-        'http://localhost:3000/tasks-upload/send-to-api',
-        {
-          baseUrl: apiConfig.baseUrl,
-          endpoint: apiConfig.endpoint,
-          token: apiConfig.token,
-          tasks: processResult.tasks
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      )
+      const totalTasks = processResult.tasks.length
+      const BATCH_SIZE = 50 // Enviar 50 tarefas por vez
+      const totalBatches = Math.ceil(totalTasks / BATCH_SIZE)
+      
+      console.log(`📦 Enviando ${totalTasks} tarefas em ${totalBatches} lote(s) de ${BATCH_SIZE}`)
 
-      setApiSendResult(response.data)
+      let successCount = 0
+      let errorCount = 0
+      const errors: any[] = []
+      const allResponses: any[] = [] // ← ADICIONADO: Armazenar todas as respostas
+
+      // Enviar em lotes
+      for (let i = 0; i < totalBatches; i++) {
+        const start = i * BATCH_SIZE
+        const end = Math.min(start + BATCH_SIZE, totalTasks)
+        const batch = processResult.tasks.slice(start, end)
+
+        setSendProgress(`Enviando lote ${i + 1}/${totalBatches}...`)
+        console.log(`📤 Enviando lote ${i + 1}/${totalBatches} (${batch.length} tarefas)...`)
+
+        try {
+          const response = await axios.post<ApiSendResult>(
+            'http://localhost:3000/tasks-upload/send-to-api',
+            {
+              baseUrl: apiConfig.baseUrl,
+              endpoint: apiConfig.endpoint,
+              token: apiConfig.token,
+              tasks: batch
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          )
+
+          // ← ADICIONADO: Armazenar resposta
+          allResponses.push({
+            batchNumber: i + 1,
+            tasksCount: batch.length,
+            response: response.data
+          })
+
+          if (response.data.success) {
+            successCount += batch.length
+            console.log(`✅ Lote ${i + 1} enviado com sucesso`)
+          } else {
+            errorCount += batch.length
+            errors.push({
+              batch: i + 1,
+              error: response.data.message
+            })
+            console.error(`❌ Erro no lote ${i + 1}:`, response.data.message)
+          }
+        } catch (err) {
+          errorCount += batch.length
+          const errorMsg = axios.isAxiosError(err) 
+            ? err.response?.data?.message || err.message 
+            : 'Erro desconhecido'
+          errors.push({
+            batch: i + 1,
+            error: errorMsg
+          })
+          
+          // ← ADICIONADO: Armazenar erro
+          allResponses.push({
+            batchNumber: i + 1,
+            tasksCount: batch.length,
+            error: errorMsg
+          })
+          
+          console.error(`❌ Erro ao enviar lote ${i + 1}:`, errorMsg)
+        }
+
+        // Pequeno delay entre lotes para não sobrecarregar a API
+        if (i < totalBatches - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      setSendProgress('')
+
+      // ← ADICIONADO: Salvar JSON de debug
+      const debugData = {
+        timestamp: new Date().toISOString(),
+        totalTasks,
+        totalBatches,
+        successCount,
+        errorCount,
+        allResponses,
+        errors: errors.length > 0 ? errors : null
+      }
+      console.log('📝 Respostas completas:', debugData)
+      
+      // Criar blob e baixar
+      const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `api-responses-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      console.log('✅ Arquivo de respostas salvo!')
+
+      // Resultado final
+      if (errorCount === 0) {
+        setApiSendResult({
+          success: true,
+          message: `✅ Todas as ${totalTasks} tarefas foram enviadas com sucesso em ${totalBatches} lote(s)!`
+        })
+      } else if (successCount > 0) {
+        setApiSendResult({
+          success: false,
+          message: `⚠️ Enviadas ${successCount} de ${totalTasks} tarefas. ${errorCount} falharam.`,
+          error: errors
+        })
+      } else {
+        setApiSendResult({
+          success: false,
+          message: `❌ Falha ao enviar todas as tarefas`,
+          error: errors
+        })
+      }
+
       setIsSendingToApi(false)
     } catch (err) {
       setIsSendingToApi(false)
+      setSendProgress('')
       if (axios.isAxiosError(err)) {
         const errorData = err.response?.data
         const errorMessage = errorData?.message || err.message
@@ -175,21 +293,56 @@ function App() {
     }
   }
 
+  // ← ADICIONADO: Função para baixar JSON das tarefas processadas
+  const downloadProcessedJson = () => {
+    if (!processResult) return
+    
+    const blob = new Blob([JSON.stringify(processResult, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tasks-processed-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    console.log('✅ Tarefas processadas salvas em JSON!')
+  }
+
   const resetUpload = () => {
     setError(null)
     setProcessResult(null)
     setApiSendResult(null)
     setIsProcessing(false)
     setIsSendingToApi(false)
+    setSendProgress('')
     // Limpar o input file
     const fileInput = document.getElementById('file-input') as HTMLInputElement
     if (fileInput) fileInput.value = ''
   }
 
+  const formatWeight = (weight: number): string => {
+    const percentage = weight * 100
+    
+    // Se for muito pequeno (< 0.01%), mostrar mais casas decimais
+    if (percentage > 0 && percentage < 0.01) {
+      return `${percentage.toFixed(4)}%`
+    }
+    
+    // Se for 0, mostrar 0.00%
+    if (percentage === 0) {
+      return '0.00%'
+    }
+    
+    // Caso normal, 2 casas decimais
+    return `${percentage.toFixed(2)}%`
+  }
+
   return (
     <div className="app">
       <div className="container">
-        <h1>Processador de Tarefas Excel</h1>
+        <h1>📊 Processador de Tarefas Excel</h1>
+        <p className="subtitle">Sistema de validação e importação com diferenciação por Torre, Pavimento e Setor</p>
 
         {processResult ? (
           <div className="result-section">
@@ -205,10 +358,20 @@ function App() {
                   <span className="label">Tarefas válidas:</span>
                   <span className="value valid">{processResult.summary.validTasks}</span>
                 </div>
-                <div className="summary-item">
-                  <span className="label">Tarefas inválidas:</span>
-                  <span className="value invalid">{processResult.summary.invalidTasks}</span>
-                </div>
+                {processResult.summary.invalidTasks > 0 && (
+                  <div className="summary-item">
+                    <span className="label">Tarefas inválidas:</span>
+                    <span className="value invalid">{processResult.summary.invalidTasks}</span>
+                  </div>
+                )}
+                {processResult.summary.projectWeightTotal !== undefined && (
+                  <div className="summary-item highlight">
+                    <span className="label">Peso total do projeto:</span>
+                    <span className="value success">
+                      {formatWeight(processResult.summary.projectWeightTotal)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Exibir tarefas válidas */}
@@ -220,16 +383,26 @@ function App() {
                       <div key={index} className="task-item">
                         <div className="task-header">
                           <strong>{task.title}</strong>
-                          <span className="task-floor">Pavimento {task.floorNumber}</span>
+                          <div className="task-badges">
+                            <span className="task-tower">{task.towerId}</span>
+                            <span className="task-floor">Pav {task.floorNumber}</span>
+                            <span className="task-sector">{task.sector}</span>
+                          </div>
                         </div>
                         <div className="task-details">
-                          <p><strong>Setor:</strong> {task.sector}</p>
+                          <div className="task-weight-info">
+                            <span className="weight-label">Peso no projeto:</span>
+                            <span className="weight-value">{formatWeight(task.taskWeightInProject)}</span>
+                          </div>
                           <p><strong>Etapas:</strong> {task.stages.length}</p>
                           <div className="stages-summary">
                             {task.stages.map((stage, idx) => (
-                              <span key={idx} className="stage-badge">
-                                {stage.name} ({stage.weight}%)
-                              </span>
+                              <div key={idx} className="stage-badge" title={stage.name}>
+                                <span className="stage-name">{stage.name}</span>
+                                <span className="stage-weight">
+                                  {formatWeight(stage.weightInProject)}
+                                </span>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -244,22 +417,49 @@ function App() {
                 <div className="errors-section">
                   <h3>❌ Erros de Validação ({processResult.errors.totalErrors})</h3>
                   <p className="errors-description">
-                    As seguintes tarefas não foram incluídas porque a soma dos pesos não é 100%:
+                    {processResult.errors.errors[0].type === 'PROJECT_WEIGHT_ERROR' 
+                      ? 'Erro crítico: A soma total dos pesos no projeto não é 100%'
+                      : 'As seguintes tarefas apresentaram problemas:'
+                    }
                   </p>
                   <div className="errors-list">
                     {processResult.errors.errors.map((error, index) => (
                       <div key={index} className="error-item">
-                        <div className="error-header">
-                          <strong className="error-task-name">{error.taskName}</strong>
-                          <span className="error-floor">Pavimento {error.floorNumber}</span>
-                        </div>
-                        <p className="error-message">{error.message}</p>
-                        <div className="error-detail">
-                          <span>Peso total: <strong>{error.totalWeight.toFixed(2)}%</strong></span>
-                          <span className={error.difference > 0 ? 'diff-positive' : 'diff-negative'}>
-                            Diferença: {error.difference > 0 ? '+' : ''}{error.difference.toFixed(2)}%
-                          </span>
-                        </div>
+                        {error.type === 'PROJECT_WEIGHT_ERROR' ? (
+                          <>
+                            <div className="error-header">
+                              <strong className="error-task-name">Validação do Projeto</strong>
+                            </div>
+                            <p className="error-message">{error.message}</p>
+                            <div className="error-detail">
+                              <span>Peso total: <strong>{error.totalWeight.toFixed(2)}%</strong></span>
+                              <span className={error.difference > 0 ? 'diff-positive' : 'diff-negative'}>
+                                Diferença: {error.difference > 0 ? '+' : ''}{error.difference.toFixed(2)}%
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="error-header">
+                              <strong className="error-task-name">{error.taskName}</strong>
+                              <div className="error-badges">
+                                {error.towerId && <span className="error-tower">{error.towerId}</span>}
+                                {error.floorNumber !== undefined && (
+                                  <span className="error-floor">Pav {error.floorNumber}</span>
+                                )}
+                              </div>
+                            </div>
+                            <p className="error-message">{error.message}</p>
+                            {error.totalWeight !== undefined && (
+                              <div className="error-detail">
+                                <span>Peso total: <strong>{error.totalWeight.toFixed(2)}%</strong></span>
+                                <span className={error.difference > 0 ? 'diff-positive' : 'diff-negative'}>
+                                  Diferença: {error.difference > 0 ? '+' : ''}{error.difference.toFixed(2)}%
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -272,23 +472,40 @@ function App() {
                   <h3>{apiSendResult.success ? '✅ Sucesso!' : '❌ Erro'}</h3>
                   <p>{apiSendResult.message}</p>
                   {apiSendResult.apiResponse && (
-                    <pre>{JSON.stringify(apiSendResult.apiResponse, null, 2)}</pre>
+                    <details className="api-details">
+                      <summary>Ver resposta da API</summary>
+                      <pre>{JSON.stringify(apiSendResult.apiResponse, null, 2)}</pre>
+                    </details>
                   )}
                   {apiSendResult.error && (
-                    <pre>{JSON.stringify(apiSendResult.error, null, 2)}</pre>
+                    <details className="api-details error">
+                      <summary>Ver erro</summary>
+                      <pre>{JSON.stringify(apiSendResult.error, null, 2)}</pre>
+                    </details>
                   )}
                 </div>
               )}
 
               <div className="result-actions">
                 {processResult.tasks.length > 0 && !apiSendResult && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={sendToApi}
-                    disabled={isSendingToApi}
-                  >
-                    {isSendingToApi ? ' Enviando...' : ' Enviar para API Externa'}
-                  </button>
+                  <>
+                    <button
+                      className="btn btn-primary"
+                      onClick={sendToApi}
+                      disabled={isSendingToApi}
+                    >
+                      {isSendingToApi 
+                        ? `⏳ ${sendProgress || 'Enviando...'}` 
+                        : '🚀 Enviar para API Externa'}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={downloadProcessedJson}
+                      title="Baixar JSON das tarefas processadas para debug"
+                    >
+                      📥 Baixar JSON
+                    </button>
+                  </>
                 )}
                 <button className="btn btn-secondary" onClick={resetUpload}>
                   📁 Processar novo arquivo
@@ -302,6 +519,17 @@ function App() {
               <div className="upload-icon">📁</div>
               <h3>Selecione uma planilha Excel</h3>
               <p>O arquivo será processado automaticamente após a seleção</p>
+              <div className="upload-requirements">
+                <p><strong>Colunas necessárias:</strong></p>
+                <ul>
+                  <li>tarefa (nome da tarefa)</li>
+                  <li>torre (ID da torre)</li>
+                  <li>pavimento (número do pavimento)</li>
+                  <li>Setor / ambiente (setor/ambiente)</li>
+                  <li>peso (peso da etapa em decimal 0-1 ou percentual)</li>
+                  <li>etapa (nome da etapa)</li>
+                </ul>
+              </div>
               <input
                 id="file-input"
                 type="file"
@@ -312,7 +540,8 @@ function App() {
               />
               {isProcessing && (
                 <div className="processing-indicator">
-                  <p>Processando arquivo...</p>
+                  <div className="spinner"></div>
+                  <p>⚙️ Processando arquivo...</p>
                 </div>
               )}
             </div>
