@@ -30,6 +30,10 @@ export class TaskDTO {
   @IsNumber()
   floorNumber: number;
 
+  @IsNumber()
+  @Min(0)
+  sortedIndex: number;
+
   @IsString()
   @IsOptional()
   observation?: string;

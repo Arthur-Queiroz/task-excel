@@ -25,6 +25,7 @@ export interface Task {
   scheduleDate: string;
   statusDate: string;
   floorNumber: number;
+  sortedIndex: number;  // Índice de ordenação da task
   observation?: string;
   done: boolean;
   completionPercentage: number;
@@ -457,6 +458,12 @@ export class TaskProcessor {
       const taskWeightInProject = taskWeights.get(taskKey) || 0;
 
       if (!taskMap.has(taskKey)) {
+        // Ler sortedIndex da planilha
+        const sortedIndexValue = row['sortedIndex'] || row['sorted_index'] || row['indice'] || row['ordem'] || 0;
+        const sortedIndex = typeof sortedIndexValue === 'number'
+          ? Math.floor(sortedIndexValue)
+          : parseInt(String(sortedIndexValue)) || 0;
+
         const task: Task = {
           towerId: towerId || '68f21c5c9490193684524b1b',
           sector: sector,  // Já validado acima
@@ -464,6 +471,7 @@ export class TaskProcessor {
           scheduleDate: this.parseISODate(row['mes_planejado'] || row['data_prevista_tarefa'] || row['task_schedule_date'] || ''),
           statusDate: new Date().toISOString(),
           floorNumber: floorNumber,
+          sortedIndex: sortedIndex,  // Lido da planilha
           observation: row['observacao'] || row['observation'] || '',
           done: row['concluido'] === 'sim' || row['done'] === 'true' || row['concluido'] === true || false,
           completionPercentage: parseFloat(row['percentual_conclusao_tarefa'] || row['task_completion'] || '0'),
