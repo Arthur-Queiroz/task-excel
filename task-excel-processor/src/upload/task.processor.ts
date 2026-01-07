@@ -8,6 +8,7 @@ export interface MeasurementDate {
 }
 
 export interface Stage {
+  sortIndex: number;  // Índice de ordenação da etapa
   name: string;
   weightInTask: number;  // Peso da etapa na tarefa (não soma 100%)
   weightInProject: number;  // Peso da etapa no projeto
@@ -322,13 +323,14 @@ export class TaskProcessor {
    * Converte uma linha do Excel para o formato de Stage
    * weightInTask = percentual que a etapa representa DENTRO da tarefa (soma = 1.0 ou 100%)
    * weightInProject = peso absoluto da etapa no projeto total
+   * sortIndex = índice de ordenação da etapa (gerado automaticamente)
    */
-  private rowToStage(row: ExcelRow, taskWeightInProject: number, stageWeightInProject: number): Stage {
+  private rowToStage(row: ExcelRow, taskWeightInProject: number, stageWeightInProject: number, sortIndex: number): Stage {
     // Calcular weightInTask como percentual relativo dentro da tarefa
     // Se taskWeightInProject = 0.015 e stageWeightInProject = 0.007
     // então weightInTask = 0.007 / 0.015 = 0.467 (46.7% da tarefa)
-    const weightInTask = taskWeightInProject > 0 
-      ? stageWeightInProject / taskWeightInProject 
+    const weightInTask = taskWeightInProject > 0
+      ? stageWeightInProject / taskWeightInProject
       : 0;
 
     // Garantir que environment nunca seja vazio
@@ -338,6 +340,7 @@ export class TaskProcessor {
       : 'Não especificado';
 
     const stage: Stage = {
+      sortIndex: sortIndex,  // Índice de ordenação
       name: row['etapa'] || row['nome_etapa'] || row['stage_name'] || '',
       weightInTask: weightInTask,  // Peso relativo dentro da tarefa (0-1)
       weightInProject: stageWeightInProject,  // Peso absoluto no projeto (0-1)
@@ -472,7 +475,9 @@ export class TaskProcessor {
       }
 
       const task = taskMap.get(taskKey)!;
-      const stage = this.rowToStage(row, taskWeightInProject, stageWeight);
+      // sortIndex é baseado na ordem de inserção (começando do 0)
+      const sortIndex = task.stages.length;
+      const stage = this.rowToStage(row, taskWeightInProject, stageWeight, sortIndex);
       task.stages.push(stage);
     });
 
