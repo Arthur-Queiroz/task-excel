@@ -9,7 +9,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { TaskProcessor, Task } from './task.processor';
+import { TaskProcessor } from './task.processor';
+import { Task } from './task.processor';
 import { FileValidationPipe } from './pipes/file-validation.pipe';
 import * as XLSX from 'xlsx';
 import axios from 'axios';

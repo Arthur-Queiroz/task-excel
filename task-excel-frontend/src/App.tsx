@@ -9,6 +9,7 @@ interface ApiConfig {
 }
 
 interface Stage {
+  sortIndex: number
   name: string
   weightInTask: number        // Peso da etapa na tarefa
   weightInProject: number     // Peso da etapa no projeto
@@ -25,6 +26,7 @@ interface Task {
   scheduleDate: string
   statusDate: string
   floorNumber: number
+  sortIndex: number
   observation?: string
   done: boolean
   completionPercentage: number
@@ -79,7 +81,7 @@ function App() {
   const apiConfig: ApiConfig = {
     baseUrl: 'https://v2-kwwmyyzjzq-uc.a.run.app',
     endpoint: '/tasks/create-many',
-    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NTg4NDg4NSwiZXhwIjoxNzY1ODg4NDg1fQ.QDkfto-YsyzGM2jyxeks81_DNd2f36FbTFYT-Y7VIjw'
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NzgzNTQxMSwiZXhwIjoxNzY3ODM5MDExfQ.0IzWnK6gDPJAiNx6M-TDm6Nhp5dkhLEF6Km6SAfPSdQ"
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,8 +140,8 @@ function App() {
   // ← ADICIONADO: Mapear nossa Task para o formato da API externa
   const mapTaskToApiFormat = (task: Task) => {
     // Garantir que sector nunca seja vazio
-    const sector = task.sector && task.sector.trim() !== '' && task.sector !== 'NaN' 
-      ? task.sector 
+    const sector = task.sector && task.sector.trim() !== '' && task.sector !== 'NaN'
+      ? task.sector
       : 'Não especificado';
 
     // Garantir que floorNumber seja >= 0
@@ -157,6 +159,7 @@ function App() {
       observation: task.observation || '',
       done: task.done,
       floorNumber: floorNumber,
+      sortIndex: task.sortIndex,
       stages: task.stages.map(stage => {
         // Garantir que environment nunca seja vazio
         const environment = stage.environment && stage.environment.trim() !== '' && stage.environment !== 'NaN'
@@ -164,6 +167,7 @@ function App() {
           : 'Não especificado';
 
         return {
+          sortIndex: stage.sortIndex,
           name: stage.name,
           weight: stage.weightInTask * 100,  // Converter decimal para percentual (0-100)
           weightOnProject: stage.weightInProject,  // decimal (0-1)
@@ -415,19 +419,7 @@ function App() {
                   </div>
                 )}
               </div>
-
-              {/* Mensagem sobre validação */}
-              <div className="validation-info">
-                <h4>ℹ️ Nova Regra de Validação</h4>
-                <p>
-                  ✅ <strong>Validação no projeto:</strong> A soma de TODOS os pesos deve ser 100%
-                  <br />
-                  ✅ <strong>Tarefas individuais:</strong> NÃO precisam somar 100%
-                  <br />
-                  ✅ <strong>Diferenciação:</strong> Torre → Pavimento → Setor
-                </p>
-              </div>
-
+ 
               {/* Exibir tarefas válidas */}
               {processResult.tasks.length > 0 && (
                 <div className="tasks-section">
@@ -579,6 +571,7 @@ function App() {
                   <li>tarefa (nome da tarefa)</li>
                   <li>torre (ID da torre)</li>
                   <li>pavimento (número do pavimento)</li>
+                  <li>sortIndex (índice de ordenação)</li>
                   <li>Setor / ambiente (setor/ambiente)</li>
                   <li>peso (peso da etapa em decimal 0-1 ou percentual)</li>
                   <li>etapa (nome da etapa)</li>

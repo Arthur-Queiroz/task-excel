@@ -21,4 +21,7 @@ export class RowDTO {
 
   @IsNumber()
   pavimento: number;
+
+  @IsNumber()
+  sortIndex: number;
 }
