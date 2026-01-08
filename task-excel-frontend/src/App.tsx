@@ -81,7 +81,7 @@ function App() {
   const apiConfig: ApiConfig = {
     baseUrl: 'https://v2-kwwmyyzjzq-uc.a.run.app',
     endpoint: '/tasks/create-many',
-    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NzgzNTQxMSwiZXhwIjoxNzY3ODM5MDExfQ.0IzWnK6gDPJAiNx6M-TDm6Nhp5dkhLEF6Km6SAfPSdQ"
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2ODk0OTg4ZjA0ZDNiNWFiZjVlZDhlYjUiLCJlbWFpbCI6InRpQGVuZ2VuaGFyaWFsZW1lLmNvbS5iciIsImFjY2Vzc1R5cGUiOiJhZG1pbiIsImlhdCI6MTc2NzkwODE5OCwiZXhwIjoxNzY3OTExNzk4fQ.Up6FOMMrl_d4EigNCppiOTi04Hw_WIXYavN8Tc4u9Ak"
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
