@@ -59,7 +59,37 @@ export class TaskProcessor {
   async handle(data: ExcelRow[], options?: { saveToFile?: boolean; outputPath?: string }) {
     this.logger.log(`Processando ${data.length} linhas do Excel`);
 
-    // 1. Validar se a soma total no projeto é 100%
+    // 1. Validar se a coluna sortIndex existe
+    const sortIndexValidation = this.validateSortIndexColumn(data);
+    if (!sortIndexValidation.isValid) {
+      const errorResult = {
+        tasks: [],
+        errors: {
+          timestamp: new Date().toISOString(),
+          totalErrors: 1,
+          errors: [{
+            type: 'SORTINDEX_COLUMN_MISSING',
+            message: sortIndexValidation.error,
+            totalWeight: 0,
+            expectedWeight: 0,
+            difference: 0
+          }]
+        },
+        summary: {
+          totalRows: data.length,
+          validTasks: 0,
+          invalidTasks: 0
+        }
+      };
+
+      if (options?.saveToFile) {
+        await this.saveToJsonFile(errorResult, options.outputPath);
+      }
+
+      return errorResult;
+    }
+
+    // 2. Validar se a soma total no projeto é 100%
     const projectValidation = this.validateProjectWeight(data);
     
     if (!projectValidation.isValid) {
@@ -160,6 +190,37 @@ export class TaskProcessor {
       this.logger.error(`Erro ao salvar arquivo JSON: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Valida se a coluna sortIndex (ou ordem) existe na planilha
+   */
+  private validateSortIndexColumn(data: ExcelRow[]): { isValid: boolean; error?: string } {
+    if (data.length === 0) {
+      return {
+        isValid: false,
+        error: 'Planilha vazia'
+      };
+    }
+
+    // Verificar se pelo menos uma linha tem sortIndex
+    const firstRow = data[0];
+    const hasSortIndex =
+      firstRow.hasOwnProperty('sortIndex') ||
+      firstRow.hasOwnProperty('sort_index') ||
+      firstRow.hasOwnProperty('indice') ||
+      firstRow.hasOwnProperty('ordem');
+
+    if (!hasSortIndex) {
+      return {
+        isValid: false,
+        error: 'A planilha deve conter uma coluna de ordenação chamada "ordem" ou "sortIndex". Por favor, adicione esta coluna com valores numéricos (0, 1, 2, ...).'
+      };
+    }
+
+    return {
+      isValid: true
+    };
   }
 
   /**
@@ -331,7 +392,7 @@ export class TaskProcessor {
       : 'Não especificado';
 
     // Ler sortIndex da planilha para a Stage
-    const sortIndexValue = row['sortIndex'] || row['sort_index'] || row['indice'] || row['ordem'] || 0;
+    const sortIndexValue = row['sortIndex'] || row['sort_index'] || row['indice'] || row['ordem'];
     const sortIndex = typeof sortIndexValue === 'number'
       ? Math.floor(sortIndexValue)
       : parseInt(String(sortIndexValue)) || 0;
@@ -449,7 +510,7 @@ export class TaskProcessor {
 
       if (!taskMap.has(taskKey)) {
         // Ler sortIndex da planilha
-        const sortIndexValue = row['sortIndex'] || row['sort_index'] || row['indice'] || row['ordem'] || 0;
+        const sortIndexValue = row['sortIndex'] || row['sort_index'] || row['indice'] || row['ordem'];
         const sortIndex = typeof sortIndexValue === 'number'
           ? Math.floor(sortIndexValue)
           : parseInt(String(sortIndexValue)) || 0;
