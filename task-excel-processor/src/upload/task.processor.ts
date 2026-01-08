@@ -25,7 +25,7 @@ export interface Task {
   scheduleDate: string;
   statusDate: string;
   floorNumber: number;
-  sortedIndex: number;  // Índice de ordenação da task
+  sortIndex: number;  // Índice de ordenação da task
   observation?: string;
   done: boolean;
   completionPercentage: number;
@@ -232,32 +232,30 @@ export class TaskProcessor {
 
   /**
    * Calcula o peso de cada tarefa no projeto e valida a estrutura
-   * 
+   *
    * Lógica:
-   * 1. Agrupa etapas por tarefa+torre+pavimento+setor (hierarquia de diferenciação)
+   * 1. Agrupa etapas por tarefa+torre+pavimento (hierarquia de diferenciação)
    * 2. Para cada grupo, calcula:
    *    - taskWeightInProject = soma dos pesos das etapas no projeto
    *    - weightInTask = peso da etapa (valor original da planilha)
    * 3. Valida que cada tarefa tem estrutura consistente
-   * 
+   *
    * Hierarquia de diferenciação:
    * - Torre: separa tarefas em torres diferentes
    * - Pavimento: separa tarefas no mesmo torre mas pavimentos diferentes
-   * - Setor: separa tarefas no mesmo torre e pavimento mas setores diferentes
    */
-  private calculateAndValidateTaskWeights(data: ExcelRow[]): { 
-    errors: ValidationError[], 
-    validTasks: Set<string> 
+  private calculateAndValidateTaskWeights(data: ExcelRow[]): {
+    errors: ValidationError[],
+    validTasks: Set<string>
   } {
     const errors: ValidationError[] = [];
     const validTasks = new Set<string>();
 
-    // Agrupa por tarefa + torre + pavimento + setor
+    // Agrupa por tarefa + torre + pavimento (SEM setor)
     const groupedTasks = new Map<string, {
       taskName: string;
       floorNumber: number;
       towerId: string;
-      sector: string;
       stages: { weight: number }[];
     }>();
 
@@ -266,28 +264,21 @@ export class TaskProcessor {
       const floorValue = row['pavimento'] || row['floor'] || row['andar'] || 0;
       const floorNumber = parseInt(String(floorValue)) || 0;
       const towerId = row['torre'] || row['Torre '] || row['torre_id'] || row['tower_id'] || '';
-      const sectorRaw = row['ambiente'] || row['Setor / ambiente'] || row['setor'] || row['sector'] || '';
-      // Garantir que sector nunca seja vazio
-      const sector = sectorRaw && sectorRaw.trim() !== '' && String(sectorRaw).toLowerCase() !== 'nan'
-        ? sectorRaw
-        : 'Não especificado';
       const weight = this.parseWeight(row['peso'] || row['weight'] || 0);
 
       if (!taskName) return;
 
-      // Cria chave única: tarefa + torre + pavimento + setor
+      // Cria chave única: tarefa + torre + pavimento (SEM setor)
       // Esta hierarquia garante que tarefas com mesmo nome sejam diferenciadas por:
       // 1. Torre diferente
       // 2. Se mesma torre, pavimento diferente
-      // 3. Se mesmo torre e pavimento, setor diferente
-      const key = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}_sector_${sector.trim().toLowerCase()}`;
+      const key = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}`;
 
       if (!groupedTasks.has(key)) {
         groupedTasks.set(key, {
           taskName,
           floorNumber,
           towerId,
-          sector,
           stages: []
         });
       }
@@ -312,7 +303,6 @@ export class TaskProcessor {
         `Tarefa: ${taskGroup.taskName} | ` +
         `Torre: ${taskGroup.towerId} | ` +
         `Pav: ${taskGroup.floorNumber} | ` +
-        `Setor: ${taskGroup.sector} | ` +
         `Peso no projeto: ${taskWeightRounded.toFixed(4)}%`
       );
     });
@@ -392,43 +382,37 @@ export class TaskProcessor {
   }
 
   /**
-   * Agrupa as linhas por tarefa + torre + pavimento + setor, criando o JSON final
-   * Agora com cálculo correto dos pesos e diferenciação completa por setor
-   * 
+   * Agrupa as linhas por tarefa + torre + pavimento, criando o JSON final
+   * Agora com cálculo correto dos pesos
+   *
    * Hierarquia de diferenciação:
    * 1. Torre: tarefas em torres diferentes são sempre separadas
    * 2. Pavimento: tarefas no mesmo torre mas pavimentos diferentes são separadas
-   * 3. Setor: tarefas no mesmo torre e pavimento mas setores diferentes são separadas
    */
   private transformToTasks(data: ExcelRow[], validTasks: Set<string>): Task[] {
     const taskMap = new Map<string, Task>();
 
     // Primeiro, calcular os pesos das tarefas
     const taskWeights = new Map<string, number>();
-    
+
     data.forEach(row => {
       const taskName = row['tarefa'] || row['nome_tarefa'] || row['task_name'] || '';
       const floorValue = row['pavimento'] || row['floor'] || row['andar'] || 0;
       const floorNumber = parseInt(String(floorValue)) || 0;
       const towerId = row['torre'] || row['Torre '] || row['tower_id'] || row['torre_id'] || '';
-      const sectorRaw = row['ambiente'] || row['Setor / ambiente'] || row['setor'] || row['sector'] || '';
-      // Garantir que sector nunca seja vazio
-      const sector = sectorRaw && sectorRaw.trim() !== '' && String(sectorRaw).toLowerCase() !== 'nan'
-        ? sectorRaw
-        : 'Não especificado';
       const weight = this.parseWeight(row['peso'] || row['weight'] || 0);
-      
+
       if (!taskName) return;
 
-      // Cria chave única incluindo setor
-      const taskKey = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}_sector_${sector.trim().toLowerCase()}`;
-      
+      // Cria chave única SEM setor
+      const taskKey = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}`;
+
       if (!validTasks.has(taskKey)) return;
 
       if (!taskWeights.has(taskKey)) {
         taskWeights.set(taskKey, 0);
       }
-      
+
       taskWeights.set(taskKey, taskWeights.get(taskKey)! + weight);
     });
 
@@ -444,11 +428,11 @@ export class TaskProcessor {
         ? sectorRaw
         : 'Não especificado';
       const stageWeight = this.parseWeight(row['peso'] || row['weight'] || 0);
-      
+
       if (!taskName) return;
 
-      // Cria uma chave única para tarefa + torre + pavimento + setor
-      const taskKey = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}_sector_${sector.trim().toLowerCase()}`;
+      // Cria uma chave única para tarefa + torre + pavimento (SEM setor)
+      const taskKey = `${taskName.trim().toLowerCase()}_tower_${towerId.trim()}_floor_${floorNumber}`;
 
       // Ignora tarefas inválidas
       if (!validTasks.has(taskKey)) {
@@ -458,11 +442,11 @@ export class TaskProcessor {
       const taskWeightInProject = taskWeights.get(taskKey) || 0;
 
       if (!taskMap.has(taskKey)) {
-        // Ler sortedIndex da planilha
-        const sortedIndexValue = row['sortedIndex'] || row['sorted_index'] || row['indice'] || row['ordem'] || 0;
-        const sortedIndex = typeof sortedIndexValue === 'number'
-          ? Math.floor(sortedIndexValue)
-          : parseInt(String(sortedIndexValue)) || 0;
+        // Ler sortIndex da planilha
+        const sortIndexValue = row['sortIndex'] || row['sort_index'] || row['indice'] || row['ordem'] || 0;
+        const sortIndex = typeof sortIndexValue === 'number'
+          ? Math.floor(sortIndexValue)
+          : parseInt(String(sortIndexValue)) || 0;
 
         const task: Task = {
           towerId: towerId || '68f21c5c9490193684524b1b',
@@ -471,7 +455,7 @@ export class TaskProcessor {
           scheduleDate: this.parseISODate(row['mes_planejado'] || row['data_prevista_tarefa'] || row['task_schedule_date'] || ''),
           statusDate: new Date().toISOString(),
           floorNumber: floorNumber,
-          sortedIndex: sortedIndex,  // Lido da planilha
+          sortIndex: sortIndex,  // Lido da planilha
           observation: row['observacao'] || row['observation'] || '',
           done: row['concluido'] === 'sim' || row['done'] === 'true' || row['concluido'] === true || false,
           completionPercentage: parseFloat(row['percentual_conclusao_tarefa'] || row['task_completion'] || '0'),
